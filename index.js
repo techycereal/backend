@@ -3,7 +3,7 @@ const cors = require('cors')
 const multer = require('multer')
 const { BlobServiceClient } = require('@azure/storage-blob')
 const path = require('path')
-const { createBusinessName, getReports, getOffers, addItem, natsPush, getData, updateItem, deleteItem, natsGet, pushOffer, natsPurchases, getPurchases } = require('./lib/database')
+const { addDrinks, createBusinessName, getReports, getOffers, addItem, natsPush, getData, updateItem, deleteItem, natsGet, pushOffer, natsPurchases, getPurchases } = require('./lib/database')
 const axios = require('axios')
 const app = express()
 const session = require('express-session');
@@ -52,6 +52,33 @@ function requireSquareLogin(req, res, next) {
   req.squareAccessToken = token;
   next();
 }
+
+async function deleteBlob(fileUrl) {
+  if (!fileUrl) return;
+  try {
+    const url = new URL(fileUrl);
+    // Assuming the URL format: https://<account>.blob.core.windows.net/<container>/<blob>
+    const [containerName, ...blobParts] = url.pathname.slice(1).split("/");
+    const blobName = blobParts.join("/");
+    const containerClient = blobServiceClient.getContainerClient(containerName);
+    const blockBlobClient = containerClient.getBlockBlobClient(blobName);
+    await blockBlobClient.deleteIfExists();
+    console.log(`✅ Blob deleted: ${blobName}`);
+  } catch (err) {
+    console.error("❌ Failed to delete blob:", err);
+  }
+}
+
+// Ensure container exists
+;(async () => {
+  const exists = await containerClient.exists()
+  if (!exists) {
+    await containerClient.create()
+    console.log(`✅ Created container: ${containerName}`)
+  }
+})()
+
+
 
 // Logout route
 app.post('/logout', (req, res) => {
@@ -124,32 +151,6 @@ app.get('/square/callback', async (req, res) => {
 });
 
 
-async function deleteBlob(fileUrl) {
-  if (!fileUrl) return;
-  try {
-    const url = new URL(fileUrl);
-    // Assuming the URL format: https://<account>.blob.core.windows.net/<container>/<blob>
-    const [containerName, ...blobParts] = url.pathname.slice(1).split("/");
-    const blobName = blobParts.join("/");
-    const containerClient = blobServiceClient.getContainerClient(containerName);
-    const blockBlobClient = containerClient.getBlockBlobClient(blobName);
-    await blockBlobClient.deleteIfExists();
-    console.log(`✅ Blob deleted: ${blobName}`);
-  } catch (err) {
-    console.error("❌ Failed to delete blob:", err);
-  }
-}
-
-
-// Ensure container exists
-;(async () => {
-  const exists = await containerClient.exists()
-  if (!exists) {
-    await containerClient.create()
-    console.log(`✅ Created container: ${containerName}`)
-  }
-})()
-
 
 // POST /add_data with file upload
 app.post('/add_data', verifyToken, upload.single('file'), async (req, res) => {
@@ -177,7 +178,7 @@ app.post('/add_data', verifyToken, upload.single('file'), async (req, res) => {
 app.post('/delete_data', verifyToken, async (req, res) => {
   try {
     const item = req.body
-
+    console.log(item)
     await deleteBlob(item.fileUrl)
     await deleteItem(item.id, 'Alex', item)
     res.status(201).json({ message: 'Successful deletion' })
@@ -260,7 +261,6 @@ app.get('/get_emails', verifyToken, async (req, res) => {
   try {
     const result = await natsGet()
     console.log(result)
-    console.log('test')
     res.status(200).json({ message: 'Successful update', emails: result.emailData })
   } catch (err) {
     console.error(err)
@@ -299,6 +299,17 @@ app.get('/get_time_report', verifyToken, async (req, res) => {
         console.error(err)
         res.status(500).json({error: err.message})
     }
+})
+
+app.post('/add_drinks', async (req, res) => {
+  try {
+    const data = req.body;
+    const response = await addDrinks(data.drinks)
+    console.log(response)
+    res.status(201);
+  } catch(err) {
+    console.log(err)
+  }
 })
 
 
