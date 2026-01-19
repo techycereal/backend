@@ -3,11 +3,12 @@ const cors = require('cors')
 const multer = require('multer')
 const { BlobServiceClient } = require('@azure/storage-blob')
 const path = require('path')
-const { addDrinks, createBusinessName, getReports, getOffers, addItem, natsPush, getData, updateItem, deleteItem, natsGet, pushOffer, natsPurchases, getPurchases } = require('./lib/database')
+const { addDrinks, createBusinessName, getReports, getOffers, addItem, natsPush, getData, updateItem, deleteItem, natsGet, pushOffer, natsPurchases, getPurchases, getName, getDrinks, getUser, finishTutorial } = require('./lib/database')
 const axios = require('axios')
 const app = express()
 const session = require('express-session');
 const { SquareClient } = require("square")
+const { z } = require('zod')
 app.use(cors({
   origin: 'http://localhost:5173', // your frontend URL
   credentials: true // allow sending cookies
@@ -24,7 +25,6 @@ app.use(session({
 // Multer in-memory storage (file will go straight to Blob Storage)
 const storage = multer.memoryStorage()
 const upload = multer({ storage })
-let i = 20;
 // Azure Blob Storage setup
 const AZURE_STORAGE_CONNECTION_STRING = process.env.AZURE_STORAGE_CONNECTION_STRING
 const containerName = 'product-images'
@@ -35,6 +35,7 @@ const SQUARE_REDIRECT_URL = 'http://localhost:3001/square/callback';
 
 // API config
 const SQUARE_API_URL = 'https://connect.squareupsandbox.com/v2';
+
 
 // Step 1: Login redirect
 app.get('/square/login', (req, res) => {
@@ -95,8 +96,9 @@ app.post('/logout', (req, res) => {
 app.post('/add_business_name', verifyToken, async (req, res) => {
   try {
     const { name } = req.body
+    const token = req.user
     console.log(req.body)
-    await createBusinessName(name)
+    await createBusinessName(name, token)
     res.status(201).json({message: name})
   } catch(err) {
     console.log(err)
@@ -143,6 +145,7 @@ app.get('/square/callback', async (req, res) => {
         if (!locationId) throw new Error('No locations found');
 
         // Redirect back to app with token + location
+        res.setHeader('Content-Type', 'text/html');
         res.redirect(`myapp://auth-callback?token=${access_token}&locationId=${locationId}`);
     } catch (err) {
         console.error('OAuth exchange failed:', err.response?.data || err.message);
@@ -154,9 +157,28 @@ app.get('/square/callback', async (req, res) => {
 
 // POST /add_data with file upload
 app.post('/add_data', verifyToken, upload.single('file'), async (req, res) => {
+    const file = req.file; // multer puts the file here
+    if (!file) return res.status(400).json({ error: "File is required" });
+    const ItemSchema = z.object({
+  item: z.string().min(1, "Item name is required"),
+  price: z
+    .string()
+    .refine(val => !isNaN(Number(val)) && Number(val) >= 0, {
+      message: "Price must be a non-negative number",
+    }),
+  quantity: z
+    .string()
+    .refine(val => Number.isInteger(Number(val)) && Number(val) >= 0, {
+      message: "Quantity must be a non-negative integer",
+    }),
+  category: z.string().min(1, "Category is required"),
+  description: z.string().max(500, "Description too long"),
+  fileUrl: z.string().min(1, "File is Required"),
+});
   try {
+    // Validate the data
     const item = req.body
-
+    const token = req.user
     // Upload file to Azure Blob Storage
     if (req.file) {
       const blobName = Date.now() + '-' + req.file.originalname
@@ -165,9 +187,8 @@ app.post('/add_data', verifyToken, upload.single('file'), async (req, res) => {
       item.fileUrl = blockBlobClient.url // store Blob URL in Cosmos DB
       console.log(`📤 File uploaded to Blob Storage: ${item.fileUrl}`)
     }
-    item.business = 'Alex'
-
-    const resource = await addItem(item)
+    const validatedItem = ItemSchema.parse(item)
+    const resource = await addItem(validatedItem, token)
     res.status(201).json({ message: 'Successful post', item: resource })
   } catch (err) {
     console.error(err)
@@ -177,10 +198,15 @@ app.post('/add_data', verifyToken, upload.single('file'), async (req, res) => {
 
 app.post('/delete_data', verifyToken, async (req, res) => {
   try {
-    const item = req.body
+    const DeleteItemSchema = z.object({
+  id: z.string().min(1, "Item ID is required"),
+  fileUrl: z.string().url("Invalid file URL"),
+});
+    const item = DeleteItemSchema.parse(req.body)
+    const token = req.user
     console.log(item)
     await deleteBlob(item.fileUrl)
-    await deleteItem(item.id, 'Alex', item)
+    await deleteItem(item.id, token)
     res.status(201).json({ message: 'Successful deletion' })
   } catch (err) {
     console.error(err)
@@ -190,9 +216,27 @@ app.post('/delete_data', verifyToken, async (req, res) => {
 
 
 app.put('/edit_data', verifyToken, upload.single('file'), async (req, res) => {
+  const ItemSchema = z.object({
+  item: z.string().min(1, "Item name is required"),
+  price: z
+    .string()
+    .refine(val => !isNaN(Number(val)) && Number(val) >= 0, {
+      message: "Price must be a non-negative number",
+    }),
+  quantity: z
+    .string()
+    .refine(val => Number.isInteger(Number(val)) && Number(val) >= 0, {
+      message: "Quantity must be a non-negative integer",
+    }),
+  category: z.string().min(1, "Category is required"),
+  description: z.string().max(500, "Description too long"),
+  fileUrl: z.string().min(1, "File is Required"),
+  id: z.string().min(1, "ID is Required"),
+  type: z.string().min(1, "Type Required"),
+});
   try {
     const item = req.body
-
+  const token = req.user
     // Upload file to Azure Blob Storage
     if (req.file) {
       const blobName = Date.now() + '-' + req.file.originalname
@@ -203,8 +247,8 @@ app.put('/edit_data', verifyToken, upload.single('file'), async (req, res) => {
     }
 
     console.log(item)
-
-    await updateItem(item.id, 'Alex', item)
+    const parsedItem = ItemSchema.parse({...item, type: 'product'})
+    await updateItem(parsedItem.id, parsedItem, token)
     res.status(201).json({ message: 'Successful post', item })
   } catch (err) {
     console.error(err)
@@ -215,7 +259,19 @@ app.put('/edit_data', verifyToken, upload.single('file'), async (req, res) => {
 
 app.get('/get_data', verifyToken, async (req, res) => {
     try{
-        const resources = await getData()
+        const token = req.user
+        const resources = await getData(token)
+        res.status(200).json({data: resources})
+    } catch(err) {
+        console.error(err)
+        res.status(500).json({ error: err.message })
+    }    
+})
+
+app.get('/get_drinks', verifyToken, async (req, res) => {
+    try{
+        const token = req.user
+        const resources = await getDrinks(token)
         res.status(200).json({data: resources})
     } catch(err) {
         console.error(err)
@@ -225,7 +281,8 @@ app.get('/get_data', verifyToken, async (req, res) => {
 
 app.get('/get_offers', verifyToken, async (req, res) => {
     try{
-        const resources = await getOffers()
+        const token = req.user
+        const resources = await getOffers(token)
         res.status(200).json({data: resources})
     } catch(err) {
         console.error(err)
@@ -236,7 +293,8 @@ app.get('/get_offers', verifyToken, async (req, res) => {
 
 app.get('/get_purchases', verifyToken, async (req, res) => {
     try{
-        const resources = await natsPurchases()
+        const token = req.user
+        const resources = await natsPurchases(token)
         res.status(200).json({data: resources})
     } catch(err) {
         console.error(err)
@@ -244,6 +302,29 @@ app.get('/get_purchases', verifyToken, async (req, res) => {
     }    
 })
 
+app.get('/get_tutorial', verifyToken, async (req, res) => {
+    try{
+        const token = req.user
+        const resources = await getUser(token)
+        res.status(200).json({data: resources})
+    } catch(err) {
+        console.error(err)
+        res.status(500).json({ error: err.message })
+    }    
+})
+
+app.put('/finish_tutorial', verifyToken, async (req, res) => {
+    try{
+        const token = req.user
+        console.log(token)
+        console.log('TUTORIALLLLLLL')
+        const resources = await finishTutorial(token)
+        res.status(200).json({data: resources})
+    } catch(err) {
+        console.error(err)
+        res.status(500).json({ error: err.message })
+    }    
+})
 
 // PUT /natspush
 app.put('/natspush', verifyToken, async (req, res) => {
@@ -259,7 +340,8 @@ app.put('/natspush', verifyToken, async (req, res) => {
 
 app.get('/get_emails', verifyToken, async (req, res) => {
   try {
-    const result = await natsGet()
+    const token = req.user
+    const result = await natsGet(token)
     console.log(result)
     res.status(200).json({ message: 'Successful update', emails: result.emailData })
   } catch (err) {
@@ -270,19 +352,37 @@ app.get('/get_emails', verifyToken, async (req, res) => {
 
 app.post('/add_offer', verifyToken, async (req, res) => {
   try {
-    const selectedDeals = req.body
-    console.log(selectedDeals)
-    const response = await pushOffer(selectedDeals)
-    res.status(201).json({ message: 'Successful deletion', data: response })
+    const DealSchema = z.object({
+  name: z.string(),
+  future: z.nullable(z.any()),
+  show: z.number(),
+});
+
+const DealsSchema = z.record(z.string(), DealSchema);
+
+const RootSchema = z.object({
+  deals: DealsSchema,
+  id: z.string(),
+});
+
+    const token = req.user;
+    const selectedDeals = req.body;
+    console.log('REQ BODY:', selectedDeals); // should now show an object
+    const validatedDeals = RootSchema.parse(selectedDeals);
+
+    const response = await pushOffer(validatedDeals, token);
+    res.status(201).json({ message: 'Successful insertion', data: response });
   } catch (err) {
-    console.error(err)
-    res.status(500).json({ error: err.message })
+    console.error(err);
+    res.status(500).json({ error: err.message });
   }
-})
+});
+
 
 app.get('/get_report', verifyToken, async (req, res) => {
   try {
-    const data = await getPurchases()
+    const token = req.user
+    const data = await getPurchases(token)
     console.log(data)
     res.status(201).json({ message: data })
   } catch (err) {
@@ -293,7 +393,8 @@ app.get('/get_report', verifyToken, async (req, res) => {
 
 app.get('/get_time_report', verifyToken, async (req, res) => {
     try {
-        const data = await getReports()
+        const token = req.user
+        const data = await getReports(token)
         res.status(200).json({message: data})
     } catch(err) {
         console.error(err)
@@ -301,10 +402,29 @@ app.get('/get_time_report', verifyToken, async (req, res) => {
     }
 })
 
-app.post('/add_drinks', async (req, res) => {
+app.get('/get_name', verifyToken, async (req, res) => {
+    try {
+        const token = req.user
+        const data = await getName(token)
+        res.status(200).json({message: data})
+    } catch(err) {
+        console.error(err)
+        res.status(500).json({error: err.message})
+    }
+})
+
+app.post('/add_drinks', verifyToken, async (req, res) => {
+  console.log(req.body)
+  const DrinkSchema = z.object({
+  drinks: z
+    .array(z.string().min(1, 'Drink name cannot be empty'))
+    .min(1, 'Must Have At Least One Drink'),
+});
   try {
     const data = req.body;
-    const response = await addDrinks(data.drinks)
+    const drinks = DrinkSchema.parse(data)
+    const token = req.user
+    const response = await addDrinks(drinks.drinks, token)
     console.log(response)
     res.status(201);
   } catch(err) {
