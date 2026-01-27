@@ -76,7 +76,7 @@ const handleValidationError = (error, req, res, next) => {
   }
   next(error)
 }
-
+ 
 app.use(cors({
   origin: '*', // your frontend URL
   credentials: true // allow sending cookies
