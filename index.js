@@ -78,7 +78,7 @@ const handleValidationError = (error, req, res, next) => {
 }
 
 app.use(cors({
-  origin: 'https://food-dashboard-eight.vercel.app', // your frontend URL
+  origin: '*', // your frontend URL
   credentials: true // allow sending cookies
 }));
 app.use(sanitizeRequest) // Add sanitization middleware
