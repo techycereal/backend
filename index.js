@@ -9,22 +9,118 @@ const app = express()
 const session = require('express-session');
 const { SquareClient } = require("square")
 const { z } = require('zod')
+const rateLimit = require('express-rate-limit')
+const { body, query, param, sanitizeBody, sanitizeQuery, sanitizeParam } = require('express-validator')
+
+// Request sanitization middleware - runs on all requests
+const sanitizeRequest = (req, res, next) => {
+  // Sanitize body, query, and params
+  if (req.body && typeof req.body === 'object') {
+    Object.keys(req.body).forEach(key => {
+      if (typeof req.body[key] === 'string') {
+        req.body[key] = req.body[key].trim()
+      }
+    })
+  }
+
+  if (req.query && typeof req.query === 'object') {
+    Object.keys(req.query).forEach(key => {
+      if (typeof req.query[key] === 'string') {
+        req.query[key] = req.query[key].trim()
+      }
+    })
+  }
+
+  if (req.params && typeof req.params === 'object') {
+    Object.keys(req.params).forEach(key => {
+      if (typeof req.params[key] === 'string') {
+        req.params[key] = req.params[key].trim()
+      }
+    })
+  }
+
+  next()
+}
+
+// Rate limiting configurations
+const generalLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000, // 15 minutes
+  max: 100, // Limit each IP to 100 requests per windowMs
+  message: {
+    error: 'Too many requests from this IP, please try again later.'
+  },
+  standardHeaders: true,
+  legacyHeaders: false,
+})
+
+const authLimiter = rateLimit({
+  windowMs: 60 * 60 * 1000, // 1 hour
+  max: 5, // Limit auth attempts to 5 per hour
+  message: {
+    error: 'Too many authentication attempts, please try again later.'
+  },
+  standardHeaders: true,
+  legacyHeaders: false,
+})
+
+// Centralized Zod validation error handler
+const handleValidationError = (error, req, res, next) => {
+  if (error.name === 'ZodError') {
+    return res.status(400).json({
+      error: 'Validation failed',
+      details: error.errors.map(err => ({
+        field: err.path.join('.'),
+        message: err.message
+      }))
+    })
+  }
+  next(error)
+}
+
 app.use(cors({
-  origin: 'http://localhost:5173', // your frontend URL
+  origin: 'https://food-dashboard-eight.vercel.app', // your frontend URL
   credentials: true // allow sending cookies
 }));
+app.use(sanitizeRequest) // Add sanitization middleware
+app.use(generalLimiter) // Add general rate limiting
 app.use(express.json())
 const { verifyToken } = require('./lib/firebase');
 
+// Request-scoped user caching middleware
+const cacheUser = async (req, res, next) => {
+  if (req.user && !req.userData) {
+    try {
+      req.userData = await getUser(req.user);
+    } catch (err) {
+      console.error('Failed to cache user data:', err);
+      return res.status(500).json({ error: 'Authentication error' });
+    }
+  }
+  next();
+};
+
 app.use(session({
-  secret: 'your-strong-secret', // change to a strong random string
+  secret: process.env.SESSION_SECRET || 'fallback-secret-change-in-production',
   resave: false,
   saveUninitialized: true,
   cookie: { secure: false } // set true in production with HTTPS
 }));
 // Multer in-memory storage (file will go straight to Blob Storage)
 const storage = multer.memoryStorage()
-const upload = multer({ storage })
+const upload = multer({
+  storage,
+  limits: {
+    fileSize: 5 * 1024 * 1024, // 5MB limit
+  },
+  fileFilter: (req, file, cb) => {
+    // Allow only image files
+    if (file.mimetype.startsWith('image/')) {
+      cb(null, true);
+    } else {
+      cb(new Error('Only image files are allowed'), false);
+    }
+  }
+})
 // Azure Blob Storage setup
 const AZURE_STORAGE_CONNECTION_STRING = process.env.AZURE_STORAGE_CONNECTION_STRING
 const containerName = 'product-images'
@@ -37,8 +133,8 @@ const SQUARE_REDIRECT_URL = 'http://localhost:3001/square/callback';
 const SQUARE_API_URL = 'https://connect.squareupsandbox.com/v2';
 
 
-// Step 1: Login redirect
-app.get('/square/login', (req, res) => {
+// Step 1: Login redirect (with stricter rate limiting for auth)
+app.get('/square/login', authLimiter, (req, res) => {
   const url = `https://connect.squareup.com/oauth2/authorize?client_id=${process.env.SQUARE_APP_ID}&scope=CUSTOMERS_READ&session=false&redirect_uri=${encodeURIComponent(SQUARE_REDIRECT_URL)}`;
   console.log("Redirecting to:", url); // 👈 log the final URL
   res.redirect(`https://connect.squareup.com/oauth2/authorize?client_id=${process.env.SQUARE_APP_ID}&scope=CUSTOMERS_READ&session=false&redirect_uri=${encodeURIComponent(SQUARE_REDIRECT_URL)}`);
@@ -70,12 +166,17 @@ async function deleteBlob(fileUrl) {
   }
 }
 
-// Ensure container exists
+// Ensure container exists (non-blocking with error handling)
 ;(async () => {
-  const exists = await containerClient.exists()
-  if (!exists) {
-    await containerClient.create()
-    console.log(`✅ Created container: ${containerName}`)
+  try {
+    const exists = await containerClient.exists()
+    if (!exists) {
+      await containerClient.create()
+      console.log(`✅ Created container: ${containerName}`)
+    }
+  } catch (err) {
+    console.error('⚠️ Failed to initialize Azure container (server will continue):', err.message)
+    // Don't crash the server if Azure is unavailable
   }
 })()
 
@@ -93,7 +194,7 @@ app.post('/logout', (req, res) => {
   });
 });
 
-app.post('/add_business_name', verifyToken, async (req, res) => {
+app.post('/add_business_name', verifyToken, cacheUser, async (req, res) => {
   try {
     const { name } = req.body
     const token = req.user
@@ -156,7 +257,7 @@ app.get('/square/callback', async (req, res) => {
 
 
 // POST /add_data with file upload
-app.post('/add_data', verifyToken, upload.single('file'), async (req, res) => {
+app.post('/add_data', verifyToken, cacheUser, upload.single('file'), async (req, res) => {
     const file = req.file; // multer puts the file here
     if (!file) return res.status(400).json({ error: "File is required" });
     const ItemSchema = z.object({
@@ -188,7 +289,7 @@ app.post('/add_data', verifyToken, upload.single('file'), async (req, res) => {
       console.log(`📤 File uploaded to Blob Storage: ${item.fileUrl}`)
     }
     const validatedItem = ItemSchema.parse(item)
-    const resource = await addItem(validatedItem, token)
+    const resource = await addItem(validatedItem, req.userData)
     res.status(201).json({ message: 'Successful post', item: resource })
   } catch (err) {
     console.error(err)
@@ -196,7 +297,7 @@ app.post('/add_data', verifyToken, upload.single('file'), async (req, res) => {
   }
 })
 
-app.post('/delete_data', verifyToken, async (req, res) => {
+app.post('/delete_data', verifyToken, cacheUser, async (req, res) => {
   try {
     const DeleteItemSchema = z.object({
   id: z.string().min(1, "Item ID is required"),
@@ -206,7 +307,7 @@ app.post('/delete_data', verifyToken, async (req, res) => {
     const token = req.user
     console.log(item)
     await deleteBlob(item.fileUrl)
-    await deleteItem(item.id, token)
+    await deleteItem(item.id, req.userData)
     res.status(201).json({ message: 'Successful deletion' })
   } catch (err) {
     console.error(err)
@@ -432,8 +533,27 @@ app.post('/add_drinks', verifyToken, async (req, res) => {
   }
 })
 
+// Add centralized error handling middleware (must be last)
+app.use(handleValidationError)
 
 const port = process.env.PORT || 3001
-app.listen(port, () => {
-  console.log(`Listening on port ${port}`)
-})
+
+// Wrap server startup in error handling
+process.on('uncaughtException', (err) => {
+  console.error('❌ Uncaught Exception:', err);
+  process.exit(1);
+});
+
+process.on('unhandledRejection', (reason, promise) => {
+  console.error('❌ Unhandled Rejection at:', promise, 'reason:', reason);
+  process.exit(1);
+});
+
+const server = app.listen(port, () => {
+  console.log(`✅ Server listening on port ${port}`);
+});
+
+server.on('error', (err) => {
+  console.error('❌ Server error:', err);
+  process.exit(1);
+});
