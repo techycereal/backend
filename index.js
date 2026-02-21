@@ -1,16 +1,25 @@
-const express = require('express')
 const cors = require('cors')
+console.time("express");
+const express = require('express');
+console.timeEnd("express");
 const multer = require('multer')
+console.time("azure-blob");
 const { BlobServiceClient } = require('@azure/storage-blob')
-const path = require('path')
-const { addDrinks, createBusinessName, getReports, getOffers, addItem, natsPush, getData, updateItem, deleteItem, natsGet, pushOffer, natsPurchases, getPurchases, getName, getDrinks, getUser, finishTutorial } = require('./lib/database')
+console.timeEnd("azure-blob");
+console.time("database");
+const { addDrinks, getReports, getOffers, addItem, natsPush, getData, updateItem, deleteItem, natsGet, pushOffer, natsPurchases, getPurchases, getName, getDrinks, getUser, finishTutorial, saveCode } = require('./lib/database')
+console.timeEnd("database");
 const axios = require('axios')
 const app = express()
 const session = require('express-session');
 const { SquareClient } = require("square")
 const { z } = require('zod')
 const rateLimit = require('express-rate-limit')
-const { body, query, param, sanitizeBody, sanitizeQuery, sanitizeParam } = require('express-validator')
+
+console.time("firebase");
+const { verifyToken } = require('./lib/firebase');
+console.timeEnd("firebase");
+
 
 // Request sanitization middleware - runs on all requests
 const sanitizeRequest = (req, res, next) => {
@@ -78,13 +87,12 @@ const handleValidationError = (error, req, res, next) => {
 }
  
 app.use(cors({
-  origin: 'https://food-dashboard-eight.vercel.app', // your frontend URL
+  origin: '*', // your frontend URL
   credentials: true // allow sending cookies
 }));
 app.use(sanitizeRequest) // Add sanitization middleware
 app.use(generalLimiter) // Add general rate limiting
 app.use(express.json())
-const { verifyToken } = require('./lib/firebase');
 
 // Request-scoped user caching middleware
 const cacheUser = async (req, res, next) => {
@@ -167,18 +175,17 @@ async function deleteBlob(fileUrl) {
 }
 
 // Ensure container exists (non-blocking with error handling)
-;(async () => {
-  try {
-    const exists = await containerClient.exists()
-    if (!exists) {
-      await containerClient.create()
-      console.log(`✅ Created container: ${containerName}`)
-    }
-  } catch (err) {
-    console.error('⚠️ Failed to initialize Azure container (server will continue):', err.message)
-    // Don't crash the server if Azure is unavailable
-  }
-})()
+// ;(async () => {
+//   try {
+//     const exists = await containerClient.exists()
+//     if (!exists) {
+//       await containerClient.create()
+//       console.log(`✅ Created container: ${containerName}`)
+//     }
+//   } catch (err) {
+//     console.error('⚠️ Failed to initialize Azure container (server will continue):', err.message)
+//   }
+// })()
 
 
 
@@ -258,8 +265,6 @@ app.get('/square/callback', async (req, res) => {
 
 // POST /add_data with file upload
 app.post('/add_data', verifyToken, cacheUser, upload.single('file'), async (req, res) => {
-    const file = req.file; // multer puts the file here
-    if (!file) return res.status(400).json({ error: "File is required" });
     const ItemSchema = z.object({
   item: z.string().min(1, "Item name is required"),
   price: z
@@ -274,12 +279,10 @@ app.post('/add_data', verifyToken, cacheUser, upload.single('file'), async (req,
     }),
   category: z.string().min(1, "Category is required"),
   description: z.string().max(500, "Description too long"),
-  fileUrl: z.string().min(1, "File is Required"),
 });
   try {
     // Validate the data
     const item = req.body
-    const token = req.user
     // Upload file to Azure Blob Storage
     if (req.file) {
       const blobName = Date.now() + '-' + req.file.originalname
@@ -533,6 +536,21 @@ app.post('/add_drinks', verifyToken, async (req, res) => {
   }
 })
 
+app.post('/saveCode', verifyToken, async (req, res) => {
+  console.log(req.body)
+  try {
+    const data = req.body;
+    console.log(data)
+    const token = req.user
+    const response = await saveCode(data.inventoryCode, token)
+    console.log(response)
+    res.status(201);
+  } catch(err) {
+    console.log(err)
+  }
+})
+
+
 // Add centralized error handling middleware (must be last)
 app.use(handleValidationError)
 
@@ -556,4 +574,14 @@ const server = app.listen(port, () => {
 server.on('error', (err) => {
   console.error('❌ Server error:', err);
   process.exit(1);
+});
+
+setImmediate(async () => {
+  try {
+    const exists = await containerClient.exists();
+    if (!exists) await containerClient.create();
+    console.log("Azure container ready");
+  } catch (err) {
+    console.error("Azure init failed:", err.message);
+  }
 });
