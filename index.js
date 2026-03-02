@@ -7,7 +7,7 @@ console.time("azure-blob");
 const { BlobServiceClient } = require('@azure/storage-blob')
 console.timeEnd("azure-blob");
 console.time("database");
-const { addDrinks, getReports, getOffers, addItem, natsPush, getData, updateItem, deleteItem, natsGet, pushOffer, natsPurchases, getPurchases, getName, getDrinks, getUser, finishTutorial, saveCode } = require('./lib/database')
+const { addDrinks, getReports, getOffers, addItem, natsPush, getData, updateItem, deleteItem, natsGet, pushOffer, natsPurchases, getPurchases, getName, getDrinks, getUser, finishTutorial, saveCode, createBusinessName } = require('./lib/database')
 console.timeEnd("database");
 const axios = require('axios')
 const app = express()
