@@ -190,7 +190,7 @@ async function deleteBlob(fileUrl) {
 
 
 // Logout route
-app.post('/logout', (req, res) => {
+app.post('/logout', verifyToken, (req, res) => {
   req.session.destroy((err) => {
     if (err) {
       console.error("❌ Error destroying session:", err);
@@ -285,13 +285,18 @@ app.post('/add_data', verifyToken, cacheUser, upload.single('file'), async (req,
     const item = req.body
     // Upload file to Azure Blob Storage
     if (req.file) {
+      console.log('here')
       const blobName = Date.now() + '-' + req.file.originalname
       const blockBlobClient = containerClient.getBlockBlobClient(blobName)
       await blockBlobClient.upload(req.file.buffer, req.file.size)
       item.fileUrl = blockBlobClient.url // store Blob URL in Cosmos DB
       console.log(`📤 File uploaded to Blob Storage: ${item.fileUrl}`)
     }
-    const validatedItem = ItemSchema.parse(item)
+    console.log(item)
+    let validatedItem = ItemSchema.parse(item)
+    if(item.fileUrl) {
+      validatedItem = ({...validatedItem, fileUrl: item.fileUrl})
+    }
     const resource = await addItem(validatedItem, req.userData)
     res.status(201).json({ message: 'Successful post', item: resource })
   } catch (err) {
@@ -420,9 +425,10 @@ app.get('/get_tutorial', verifyToken, async (req, res) => {
 app.put('/finish_tutorial', verifyToken, async (req, res) => {
     try{
         const token = req.user
-        console.log(token)
+        const { section } = req.body
+        console.log(section)
         console.log('TUTORIALLLLLLL')
-        const resources = await finishTutorial(token)
+        const resources = await finishTutorial(token, section)
         res.status(200).json({data: resources})
     } catch(err) {
         console.error(err)
@@ -544,7 +550,7 @@ app.post('/saveCode', verifyToken, async (req, res) => {
     const token = req.user
     const response = await saveCode(data.inventoryCode, token)
     console.log(response)
-    res.status(201);
+    res.status(200).json({"message": "SUCCESS"});
   } catch(err) {
     console.log(err)
   }
