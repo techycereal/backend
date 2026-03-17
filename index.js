@@ -248,6 +248,7 @@ app.get('/square/callback', async (req, res) => {
         // Redirect back to app with status ONLY
         res.redirect(`myapp://auth-callback?status=success&state=${state}`);
     } catch (err) {
+        console.log(err)
         res.redirect(`myapp://auth-callback?status=error`);
     }
 });
