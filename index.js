@@ -233,6 +233,7 @@ app.get('/square/customers', requireSquareLogin, async (req, res) => {
 
 // OAuth callback
 app.get('/square/callback', async (req, res) => {
+  const client = new SquareClient({});
     const { code, state } = req.query;
     try {
         const { result } = await client.oAuth.obtainToken({
