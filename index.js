@@ -236,13 +236,13 @@ app.get('/square/callback', async (req, res) => {
   const client = new SquareClient({});
     const { code, state } = req.query;
     try {
-        const { result } = await client.oAuth.obtainToken({
+        const result = await client.oAuth.obtainToken({
             clientId: process.env.SQUARE_APP_ID,
             clientSecret: process.env.SQUARE_APP_SECRET,
             code,
             grantType: 'authorization_code'
         });
-
+        
         // Save to Cosmos DB instead of putting it in the URL
         await saveTempAuth(state, result.accessToken, "L7SDWNY6TWWVB");
 
