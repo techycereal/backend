@@ -7,7 +7,7 @@ console.time("azure-blob");
 const { BlobServiceClient } = require('@azure/storage-blob')
 console.timeEnd("azure-blob");
 console.time("database");
-const { addDrinks, getReports, getOffers, addItem, natsPush, getData, updateItem, deleteItem, natsGet, pushOffer, natsPurchases, getPurchases, getName, getDrinks, getUser, finishTutorial, saveCode, createBusinessName } = require('./lib/database')
+const { getTempAuth, saveTempAuth, addDrinks, getReports, getOffers, addItem, natsPush, getData, updateItem, deleteItem, natsGet, pushOffer, natsPurchases, getPurchases, getName, getDrinks, getUser, finishTutorial, saveCode, createBusinessName } = require('./lib/database')
 console.timeEnd("database");
 const axios = require('axios')
 const app = express()
@@ -234,30 +234,52 @@ app.get('/square/customers', requireSquareLogin, async (req, res) => {
 // OAuth callback
 app.get('/square/callback', async (req, res) => {
     const { code, state } = req.query;
-    const client = new SquareClient({});
-
-// Now, call the token exchange endpoint:
-
     try {
-        const response = await client.oAuth.obtainToken({
-    clientId: process.env.SQUARE_APP_ID,
-    clientSecret: process.env.SQUARE_APP_SECRET,
-    code: code,
-    grantType: "authorization_code",
+        const { result } = await client.oAuth.obtainToken({
+            clientId: process.env.SQUARE_APP_ID,
+            clientSecret: process.env.SQUARE_APP_SECRET,
+            code,
+            grantType: 'authorization_code'
+        });
+
+        // Save to Cosmos DB instead of putting it in the URL
+        await saveTempAuth(state, result.accessToken, "L7SDWNY6TWWVB");
+
+        // Redirect back to app with status ONLY
+        res.redirect(`myapp://auth-callback?status=success&state=${state}`);
+    } catch (err) {
+        res.redirect(`myapp://auth-callback?status=error`);
+    }
 });
 
-        const access_token = response.accessToken
-        console.log('Access token received:', access_token);
+app.post('/api/bootstrap', async (req, res) => {
+    const { state } = req.body;
 
-        const locationId = "L7SDWNY6TWWVB"
-        if (!locationId) throw new Error('No locations found');
+    if (!state) {
+        return res.status(400).json({ error: "Missing state parameter" });
+    }
 
-        // Redirect back to app with token + location
-        res.setHeader('Content-Type', 'text/html');
-        res.redirect(`myapp://auth-callback?token=${access_token}&locationId=${locationId}`);
+    try {
+        // 1. Look up the token in Cosmos DB using the state ID
+        const authData = await getTempAuth(state)
+
+        if (!authData) {
+            // If it's not there, it either expired (TTL) or never existed
+            return res.status(404).json({ error: "Session not found or expired" });
+        }
+
+        // 2. Send the token back in the body (Encrypted by HTTPS)
+        res.json({
+            accessToken: authData.accessToken,
+            locationId: authData.locationId
+        });
+
+        // 3. Security: Delete it immediately after it's been "claimed"
+        await container.item(state, state).delete();
+
     } catch (err) {
-        console.error('OAuth exchange failed:', err.response?.data || err.message);
-        res.status(500).send('OAuth exchange failed');
+        console.error("Bootstrap error:", err);
+        res.status(500).json({ error: "Internal server error" });
     }
 });
 
