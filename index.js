@@ -254,6 +254,29 @@ app.get('/square/callback', async (req, res) => {
     }
 });
 
+// OAuth callback
+app.get('/square/callback_sandbox', async (req, res) => {
+  const client = new SquareClient({});
+    const { code, state } = req.query;
+    try {
+        const result = await client.oAuth.obtainToken({
+            clientId: process.env.SQUARE_APP_SANDBOX_ID,
+            clientSecret: process.env.SQUARE_APP_SANDBOX_SECRET,
+            code,
+            grantType: 'authorization_code'
+        });
+        
+        // Save to Cosmos DB instead of putting it in the URL
+        await saveTempAuth(state, result.accessToken, "L7SDWNY6TWWVB");
+
+        // Redirect back to app with status ONLY
+        res.redirect(`myapp://auth-callback?status=success&state=${state}`);
+    } catch (err) {
+        console.log(err)
+        res.redirect(`myapp://auth-callback?status=error`);
+    }
+});
+
 app.post('/api/bootstrap', async (req, res) => {
     const { state } = req.body;
 
