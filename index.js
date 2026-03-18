@@ -267,7 +267,7 @@ app.get('/square/callback_sandbox', async (req, res) => {
         });
         
         // Save to Cosmos DB instead of putting it in the URL
-        await saveTempAuth(state, result.accessToken, "L7SDWNY6TWWVB");
+        await saveTempAuth(state, process.env.SQUARE_SANDBOX_ACCESS, "L3WPD4BR5FK8A");
 
         // Redirect back to app with status ONLY
         res.redirect(`myapp://auth-callback?status=success&state=${state}`);
