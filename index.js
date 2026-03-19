@@ -259,15 +259,17 @@ app.get('/square/callback_sandbox', async (req, res) => {
   const client = new SquareClient({});
     const { code, state } = req.query;
     try {
-        const result = await client.oAuth.obtainToken({
+
+      const result = await client.oAuth.obtainToken({
             clientId: process.env.SQUARE_APP_SANDBOX_ID,
             clientSecret: process.env.SQUARE_APP_SANDBOX_SECRET,
             code,
             grantType: 'authorization_code'
         });
-        
+        console.log(result)
+        console.log(result.accessToken)
         // Save to Cosmos DB instead of putting it in the URL
-        await saveTempAuth(state, process.env.SQUARE_SANDBOX_ACCESS, "L3WPD4BR5FK8A");
+        await saveTempAuth(state, result.accessToken, "L3WPD4BR5FK8A");
 
         // Redirect back to app with status ONLY
         res.redirect(`myapp://auth-callback?status=success&state=${state}`);
