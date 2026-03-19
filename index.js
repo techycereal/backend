@@ -12,7 +12,7 @@ console.timeEnd("database");
 const axios = require('axios')
 const app = express()
 const session = require('express-session');
-const { SquareClient } = require("square")
+const { SquareClient, SquareEnvironment } = require("square")
 const { z } = require('zod')
 const rateLimit = require('express-rate-limit')
 
@@ -256,7 +256,10 @@ app.get('/square/callback', async (req, res) => {
 
 // OAuth callback
 app.get('/square/callback_sandbox', async (req, res) => {
-  const client = new SquareClient({});
+  const client = new SquareClient({
+        environment: SquareEnvironment.Sandbox, 
+        accessToken: process.env.SQUARE_SANDBOX_ACCESS // Use your Sandbox Personal Access Token here
+    });
     const { code, state } = req.query;
     try {
 
