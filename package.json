@@ -9,6 +9,7 @@
   "license": "ISC",
   "description": "",
   "dependencies": {
+    "@azure/communication-email": "^1.1.0",
     "@azure/cosmos": "^4.5.0",
     "@azure/storage-blob": "^12.28.0",
     "axios": "^1.11.0",
@@ -20,6 +21,7 @@
     "express-validator": "^7.3.1",
     "firebase-admin": "^13.5.0",
     "mailersend": "^2.6.0",
+    "mailgun.js": "^12.7.1",
     "multer": "^2.0.2",
     "nats": "^2.29.3",
     "square": "^43.1.1",
