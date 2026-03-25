@@ -612,7 +612,7 @@ app.post('/saveCode', verifyToken, async (req, res) => {
 app.post('/send_email', async (req, res) => {
   try {
     const data = req.body;
-    const response = await sendSimpleMessage(data.subject, data.body)
+    const response = await sendSimpleMessage(data.subject, data.body, data.email, data.context)
     console.log(response)
     res.status(200).json({"message": "SUCCESS"});
   } catch(err) {
