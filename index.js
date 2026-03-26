@@ -629,7 +629,7 @@ app.post('/sandbox_login', async (req, res) => {
 })
 
 
-app.post('/app_secret', async (req, res) => {
+app.post('/api/secret', async (req, res) => {
   try {
     const data = req.body;
     console.log('APP SECRET')
