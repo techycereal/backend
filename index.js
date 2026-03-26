@@ -7,7 +7,7 @@ console.time("azure-blob");
 const { BlobServiceClient } = require('@azure/storage-blob')
 console.timeEnd("azure-blob");
 console.time("database");
-const { getTempAuth, saveTempAuth, addDrinks, getReports, getOffers, addItem, natsPush, getData, updateItem, deleteItem, natsGet, pushOffer, natsPurchases, getPurchases, getName, getDrinks, getUser, finishTutorial, saveCode, createBusinessName } = require('./lib/database')
+const { sendSecretAuth, getTempAuth, saveTempAuth, addDrinks, getReports, getOffers, addItem, natsPush, getData, updateItem, deleteItem, natsGet, pushOffer, natsPurchases, getPurchases, getName, getDrinks, getUser, finishTutorial, saveCode, createBusinessName } = require('./lib/database')
 const { sendSimpleMessage } = require('./lib/send_email')
 console.timeEnd("database");
 const axios = require('axios')
@@ -623,6 +623,20 @@ app.post('/send_email', async (req, res) => {
 app.post('/sandbox_login', async (req, res) => {
   try {
     res.status(200).json({"accessToken": process.env.SANDBOX_TEST_TOKEN, "locationId": process.env.SANDBOX_TEST_LOCATION});
+  } catch(err) {
+    console.log(err)
+  }
+})
+
+
+app.post('/app_secret', async (req, res) => {
+  try {
+    const data = req.body;
+    console.log('APP SECRET')
+    console.log(data)
+    console.log(data.secret)
+    await sendSecretAuth(data.secret)
+    res.status(200).json({"message": "success"});
   } catch(err) {
     console.log(err)
   }
