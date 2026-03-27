@@ -16,11 +16,52 @@ const session = require('express-session');
 const { SquareClient, SquareEnvironment } = require("square")
 const { z } = require('zod')
 const rateLimit = require('express-rate-limit')
-
 console.time("firebase");
 const { verifyToken } = require('./lib/firebase');
 console.timeEnd("firebase");
+const server = http.createServer(app);
+const WebSocket = require("ws");
+const wss = new WebSocket.Server({ server });
+const clientMap = new Map();
 
+
+wss.on("connection", (ws) => {
+  console.log("WebSocket client connected");
+  let assignedId = null;
+
+  ws.on("message", (msg) => {
+    try {
+      const data = JSON.parse(msg);
+
+      // --- 1. RESUME / IDENTIFY LOGIC ---
+      if (data.type === "connect") {
+        clientMap.set(assignedId, ws);
+        clients.add(ws);
+        ws.send(JSON.stringify({ 
+          type: "connect", 
+          clientId: assignedId, 
+          message: 'Session Synced' 
+        }));
+        return;
+      }
+    } catch (err) {
+      console.error("⚠️ WS Message Parse Error:", err);
+    }
+  });
+
+  ws.on("close", () => {
+    // We remove the socket reference so we don't try to send data 
+    // to a closed pipe, but we keep the "session" logic if needed.
+    if (assignedId) {
+        console.log(`🔌 Connection paused for: ${assignedId}`);
+        // Optional: Set a timeout to delete from clientMap after 5 mins of inactivity
+    }
+  });
+
+  ws.on("error", (err) => {
+    console.error("❌ WebSocket error:", err);
+  });
+});
 
 // Request sanitization middleware - runs on all requests
 const sanitizeRequest = (req, res, next) => {
@@ -644,6 +685,17 @@ app.post('/api/secret', verifyToken, async (req, res) => {
   }
 })
 
+app.post('secret_success', async (req, res) => {
+  try {
+    const data = req.body
+    console.log(data)
+    const ws = clientMap.get(JSON.parse(clientId).clientId);
+    ws.send(JSON.stringify({"type": "secret", "message": "success"}));
+    res.status(200).json({"message": "succes"});
+  } catch(err) {
+    res.status(500).json({'err': "error occured"})
+  }
+})
 
 // Add centralized error handling middleware (must be last)
 app.use(handleValidationError)
@@ -661,7 +713,7 @@ process.on('unhandledRejection', (reason, promise) => {
   process.exit(1);
 });
 
-const server = app.listen(port, () => {
+server.listen(port, () => {
   console.log(`✅ Server listening on port ${port}`);
 });
 
