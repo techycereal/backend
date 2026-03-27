@@ -38,9 +38,10 @@ wss.on("connection", (ws) => {
       if (data.type === "connect") {
         // Use provided ID (reconnect) or generate a new one
         assignedId = data.clientId || crypto.randomUUID();
+        console.log(assignedId)
 
         // Update the map with the current active socket
-        clientMap.set(assignedId, ws);
+        clientMap.set(assignedId, ws); 
         
         console.log(`Client ${assignedId} synced.`);
 
