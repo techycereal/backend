@@ -24,7 +24,7 @@ const server = http.createServer(app);
 const WebSocket = require("ws");
 const wss = new WebSocket.Server({ server });
 const clientMap = new Map();
-
+const crypto = require('crypto');
 
 wss.on("connection", (ws) => {
   console.log("WebSocket client connected");
@@ -36,8 +36,14 @@ wss.on("connection", (ws) => {
 
       // --- 1. RESUME / IDENTIFY LOGIC ---
       if (data.type === "connect") {
+        // Use provided ID (reconnect) or generate a new one
+        assignedId = data.clientId || crypto.randomUUID();
+
+        // Update the map with the current active socket
         clientMap.set(assignedId, ws);
-        clients.add(ws);
+        
+        console.log(`Client ${assignedId} synced.`);
+
         ws.send(JSON.stringify({ 
           type: "connect", 
           clientId: assignedId, 
