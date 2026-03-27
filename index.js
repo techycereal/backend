@@ -632,6 +632,8 @@ app.post('/sandbox_login', async (req, res) => {
 app.post('/api/secret', verifyToken, async (req, res) => {
   try {
     const data = req.body;
+    const token = req.user
+    console.log(token)
     console.log('APP SECRET')
     console.log(data)
     console.log(data.secret)
