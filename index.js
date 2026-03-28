@@ -693,7 +693,7 @@ app.post('/api/secret', verifyToken, async (req, res) => {
 app.post('/secret_success', async (req, res) => {
   try {
     const data = req.body;
-    console.log("Received Success Trigger:", data);
+    console.log(data);
 
     // 1. Safely extract the clientId
     // If your frontend sent { clientId: "...", message: "success" }
