@@ -8,7 +8,7 @@ console.time("azure-blob");
 const { BlobServiceClient } = require('@azure/storage-blob')
 console.timeEnd("azure-blob");
 console.time("database");
-const { sendSecretAuth, getTempAuth, saveTempAuth, addDrinks, getReports, getOffers, addItem, natsPush, getData, updateItem, deleteItem, natsGet, pushOffer, natsPurchases, getPurchases, getName, getDrinks, getUser, finishTutorial, saveCode, createBusinessName } = require('./lib/database')
+const { sendEmailVerification, sendSecretAuth, getTempAuth, saveTempAuth, addDrinks, getReports, getOffers, addItem, natsPush, getData, updateItem, deleteItem, natsGet, pushOffer, natsPurchases, getPurchases, getName, getDrinks, getUser, finishTutorial, saveCode, createBusinessName } = require('./lib/database')
 const { sendSimpleMessage } = require('./lib/send_email')
 console.timeEnd("database");
 const axios = require('axios')
