@@ -734,6 +734,8 @@ app.post('/accepted_emails', async (req, res) => {
     console.log(payload)
     // 1. Mailgun sends a lot of data, we want 'event-data'
     const eventData = payload['event-data'];
+    console.log("THIS IS AN EVENT DATA")
+    console.log(eventData)
     
     if (!eventData) {
       console.log("Empty or malformed webhook received");
@@ -742,11 +744,16 @@ app.post('/accepted_emails', async (req, res) => {
 
     // 2. Extract our "hidden" token from user-variables
     const encryptedToken = eventData['user-variables']?.ref;
+    console.log("THIS IS AN ENCRYPTED TOKEN")
+    console.log(encryptedToken)
+    
 
     if (encryptedToken) {
       try {
         // 3. UNLOCK the token to get the Pi ID
         const decoded = jwt.verify(encryptedToken, JWT_SECRET);
+        console.log("THIS IS AN decoded TOKEN")
+        console.log(decoded)
         const piId = decoded.piId;
 
         console.log(`🎯 Webhook for Pi: ${piId}`);
