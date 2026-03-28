@@ -731,7 +731,7 @@ const JWT_SECRET = "your_super_hidden_server_secret_key";
 app.post('/accepted_emails', async (req, res) => {
   try {
     const payload = req.body;
-    
+    console.log(payload)
     // 1. Mailgun sends a lot of data, we want 'event-data'
     const eventData = payload['event-data'];
     
@@ -751,16 +751,6 @@ app.post('/accepted_emails', async (req, res) => {
 
         console.log(`🎯 Webhook for Pi: ${piId}`);
         console.log(`📧 Event: ${eventData.event} | Recipient: ${eventData.recipient}`);
-
-        // 4. Update your Raspberry Pi via WebSocket if it's connected
-        const ws = clientMap.get(piId);
-        if (ws && ws.readyState === 1) {
-          ws.send(JSON.stringify({
-            type: "MAIL_STATUS",
-            event: eventData.event,
-            recipient: eventData.recipient
-          }));
-        }
 
       } catch (jwtErr) {
         console.log("⚠️ Could not decrypt token. It might be expired or invalid.");
