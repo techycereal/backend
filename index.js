@@ -693,7 +693,7 @@ app.post('/api/secret', verifyToken, async (req, res) => {
   }
 })
 
-app.post('secret_success', async (req, res) => {
+app.post('/secret_success', async (req, res) => {
   try {
     const data = req.body
     console.log(data)
