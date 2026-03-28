@@ -721,6 +721,16 @@ app.post('/secret_success', async (req, res) => {
     }
   }, 5000); // 5 second grace period
 });
+
+app.post('/accepted_emails', async (req, res) => {
+  try {
+    const data = req.body;
+    console.log(data)
+  } catch(err) {
+    console.log(err)
+  }
+})
+
 // Add centralized error handling middleware (must be last)
 app.use(handleValidationError)
 
