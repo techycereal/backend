@@ -25,6 +25,7 @@ const WebSocket = require("ws");
 const wss = new WebSocket.Server({ server });
 const clientMap = new Map();
 const crypto = require('crypto');
+const jwt = require('jsonwebtoken');
 
 wss.on("connection", (ws) => {
   console.log("WebSocket client connected");
@@ -722,14 +723,61 @@ app.post('/secret_success', async (req, res) => {
   }, 5000); // 5 second grace period
 });
 
+
+
+// Use the SAME secret you used to sign the token in the sendEmail function
+const JWT_SECRET = "your_super_hidden_server_secret_key"; 
+
 app.post('/accepted_emails', async (req, res) => {
   try {
-    const data = req.body;
-    console.log(data)
-  } catch(err) {
-    console.log(err)
+    const payload = req.body;
+    
+    // 1. Mailgun sends a lot of data, we want 'event-data'
+    const eventData = payload['event-data'];
+    
+    if (!eventData) {
+      console.log("Empty or malformed webhook received");
+      return res.sendStatus(400);
+    }
+
+    // 2. Extract our "hidden" token from user-variables
+    const encryptedToken = eventData['user-variables']?.ref;
+
+    if (encryptedToken) {
+      try {
+        // 3. UNLOCK the token to get the Pi ID
+        const decoded = jwt.verify(encryptedToken, JWT_SECRET);
+        const piId = decoded.piId;
+
+        console.log(`🎯 Webhook for Pi: ${piId}`);
+        console.log(`📧 Event: ${eventData.event} | Recipient: ${eventData.recipient}`);
+
+        // 4. Update your Raspberry Pi via WebSocket if it's connected
+        const ws = clientMap.get(piId);
+        if (ws && ws.readyState === 1) {
+          ws.send(JSON.stringify({
+            type: "MAIL_STATUS",
+            event: eventData.event,
+            recipient: eventData.recipient
+          }));
+        }
+
+      } catch (jwtErr) {
+        console.log("⚠️ Could not decrypt token. It might be expired or invalid.");
+      }
+    } else {
+      console.log("No custom Pi ID found in this webhook.");
+    }
+
+    // 5. Always tell Mailgun you received the data (200 OK)
+    // If you don't, Mailgun will keep retrying and spamming your server.
+    res.sendStatus(200);
+
+  } catch (err) {
+    console.error("Webhook Route Error:", err);
+    res.status(500).send("Internal Server Error");
   }
-})
+});
 
 // Add centralized error handling middleware (must be last)
 app.use(handleValidationError)
