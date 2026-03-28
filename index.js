@@ -760,7 +760,7 @@ app.post('/accepted_emails', async (req, res) => {
         console.log(`📧 Event: ${eventData.event} | Recipient: ${eventData.recipient}`);
 
       } catch (jwtErr) {
-        console.log("⚠️ Could not decrypt token. It might be expired or invalid.");
+        console.log(jwtErr);
       }
     } else {
       console.log("No custom Pi ID found in this webhook.");
