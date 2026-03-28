@@ -691,7 +691,13 @@ app.post('/api/secret', verifyToken, async (req, res) => {
 })
 
 app.post('/secret_success', async (req, res) => {
-  const { clientId } = req.body;
+  const { clientId, message } = req.body;
+  if(message === "failure") {
+    ws.send(JSON.stringify({
+        type: "secret_failure",
+        message: "success"
+      }));
+  }
   
   console.log(`Initial success received for ${clientId}. Waiting 5s for reconnect...`);
 
