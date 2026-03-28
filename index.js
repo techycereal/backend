@@ -755,7 +755,7 @@ app.post('/accepted_emails', async (req, res) => {
         console.log("THIS IS AN decoded TOKEN")
         console.log(decoded)
         const piId = decoded.piId;
-
+        await sendEmailVerification(eventData.recipient, piId)
         console.log(`🎯 Webhook for Pi: ${piId}`);
         console.log(`📧 Event: ${eventData.event} | Recipient: ${eventData.recipient}`);
 
