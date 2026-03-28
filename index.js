@@ -691,38 +691,29 @@ app.post('/api/secret', verifyToken, async (req, res) => {
 })
 
 app.post('/secret_success', async (req, res) => {
-  try {
-    const data = req.body;
-    console.log(data);
+  const { clientId } = req.body;
+  
+  console.log(`Initial success received for ${clientId}. Waiting 5s for reconnect...`);
 
-    // 1. Safely extract the clientId
-    // If your frontend sent { clientId: "...", message: "success" }
-    const targetId = data.clientId; 
+  // 1. Tell the sender (the QR Scanner/Backend) that we've started the wait
+  res.status(202).json({ status: "waiting_for_client_reconnect" });
 
-    if (!targetId) {
-      return res.status(400).json({ error: "Missing clientId in request body" });
-    }
+  // 2. Wait for the Android app to potentially finish its Square Intent
+  setTimeout(() => {
+    const ws = clientMap.get(clientId);
 
-    // 2. Get the socket from your Map
-    const ws = clientMap.get(targetId);
-
-    // 3. Check if the socket exists AND is still open
-    if (ws && ws.readyState === 1) { // 1 means OPEN
+    if (ws && ws.readyState === 1) {
       ws.send(JSON.stringify({
         type: "secret",
         message: "success"
       }));
-      
-      return res.status(200).json({ status: "delivered" });
+      console.log(`✅ Delayed delivery successful for ${clientId}`);
     } else {
-      console.log(`⚠️ Socket for ${targetId} not found or closed.`);
-      return res.status(404).json({ error: "Client not connected to WebSocket" });
+      console.log(`❌ Client ${clientId} failed to reconnect in time. Queueing instead.`);
+      // Fallback: Put it in the pending queue we discussed earlier
+      pendingMessages.set(clientId, { type: "secret", message: "success" });
     }
-
-  } catch (err) {
-    console.error("Route Error:", err);
-    res.status(500).json({ err: "Internal server error" });
-  }
+  }, 5000); // 5 second grace period
 });
 // Add centralized error handling middleware (must be last)
 app.use(handleValidationError)
