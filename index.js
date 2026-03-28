@@ -695,16 +695,38 @@ app.post('/api/secret', verifyToken, async (req, res) => {
 
 app.post('/secret_success', async (req, res) => {
   try {
-    const data = req.body
-    console.log(data)
-    const ws = clientMap.get(JSON.parse(clientId).clientId);
-    ws.send(JSON.stringify({"type": "secret", "message": "success"}));
-    res.status(200).json({"message": "succes"});
-  } catch(err) {
-    res.status(500).json({'err': "error occured"})
-  }
-})
+    const data = req.body;
+    console.log("Received Success Trigger:", data);
 
+    // 1. Safely extract the clientId
+    // If your frontend sent { clientId: "...", message: "success" }
+    const targetId = data.clientId; 
+
+    if (!targetId) {
+      return res.status(400).json({ error: "Missing clientId in request body" });
+    }
+
+    // 2. Get the socket from your Map
+    const ws = clientMap.get(targetId);
+
+    // 3. Check if the socket exists AND is still open
+    if (ws && ws.readyState === 1) { // 1 means OPEN
+      ws.send(JSON.stringify({
+        type: "secret",
+        message: "success"
+      }));
+      
+      return res.status(200).json({ status: "delivered" });
+    } else {
+      console.log(`⚠️ Socket for ${targetId} not found or closed.`);
+      return res.status(404).json({ error: "Client not connected to WebSocket" });
+    }
+
+  } catch (err) {
+    console.error("Route Error:", err);
+    res.status(500).json({ err: "Internal server error" });
+  }
+});
 // Add centralized error handling middleware (must be last)
 app.use(handleValidationError)
 
