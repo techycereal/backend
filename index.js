@@ -682,11 +682,8 @@ app.post('/api/secret', verifyToken, async (req, res) => {
   try {
     const data = req.body;
     const token = req.user
-    console.log(token)
-    console.log('APP SECRET')
     console.log(data)
-    console.log(data.secret)
-    await sendSecretAuth(data.secret, token)
+    await sendSecretAuth(data.secret, token, data.clientId)
     res.status(200).json({"message": "success"});
   } catch(err) {
     console.log(err)
