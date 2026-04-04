@@ -672,6 +672,9 @@ app.post('/send_email', async (req, res) => {
 
 app.post('/sandbox_login', verifyToken, async (req, res) => {
   try {
+    const token = req.user
+    console.log("THIS IS A TOKEN")
+    console.log(token)
     res.status(200).json({"accessToken": process.env.SANDBOX_TEST_TOKEN, "locationId": process.env.SANDBOX_TEST_LOCATION});
   } catch(err) {
     console.log(err)
