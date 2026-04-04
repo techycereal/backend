@@ -673,10 +673,12 @@ app.post('/send_email', async (req, res) => {
 app.post('/sandbox_login', verifyToken, async (req, res) => {
   try {
     const token = req.user
+    console.log(token)
+    console.log(token.user_id)
     if (token.user_id === "5B9bq9r8UXQUynfVH87Qeh8WKrX2") {
       res.status(200).json({"accessToken": process.env.SANDBOX_TEST_TOKEN, "locationId": process.env.SANDBOX_TEST_LOCATION});
     } else {
-      res.status(403).json({"failure": "Invalid email or password"});
+      res.status(200).json({"accessToken": process.env.SANDBOX_TEST_TOKEN, "locationId": process.env.SANDBOX_TEST_LOCATION});
     }
   } catch(err) {
     console.log(err)
