@@ -670,7 +670,7 @@ app.post('/send_email', async (req, res) => {
   }
 })
 
-app.post('/sandbox_login', async (req, res) => {
+app.post('/sandbox_login', verifyToken, async (req, res) => {
   try {
     res.status(200).json({"accessToken": process.env.SANDBOX_TEST_TOKEN, "locationId": process.env.SANDBOX_TEST_LOCATION});
   } catch(err) {
