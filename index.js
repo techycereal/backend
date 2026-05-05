@@ -727,7 +727,7 @@ app.post('/secret_success', async (req, res) => {
       // Fallback: Put it in the pending queue we discussed earlier
       pendingMessages.set(clientId, { type: "secret", message: "success" });
     }
-  }, 5000); // 5 second grace period
+  }, 15000); // 5 second grace period
 });
 
 
