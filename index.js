@@ -283,24 +283,69 @@ app.get('/square/customers', requireSquareLogin, async (req, res) => {
 });
 
 // OAuth callback
+// app.get('/square/callback', async (req, res) => {
+//   const client = new SquareClient({});
+//     const { code, state } = req.query;
+//     try {
+//         const result = await client.oAuth.obtainToken({
+//             clientId: process.env.SQUARE_APP_ID,
+//             clientSecret: process.env.SQUARE_APP_SECRET,
+//             code,
+//             grantType: 'authorization_code'
+//         });
+        
+//         // Save to Cosmos DB instead of putting it in the URL
+//         await saveTempAuth(state, result.accessToken, "L7SDWNY6TWWVB");
+
+//         // Redirect back to app with status ONLY
+//         res.redirect(`myapp://auth-callback?status=success&state=${state}`);
+//     } catch (err) {
+//         console.log(err)
+//         res.redirect(`myapp://auth-callback?status=error`);
+//     }
+// });
+
+
+
 app.get('/square/callback', async (req, res) => {
-  const client = new SquareClient({});
+    const client = new SquareClient({
+        // Initialize client with the dynamic token we just got
+        accessToken: null 
+    });
+    
     const { code, state } = req.query;
+
     try {
-        const result = await client.oAuth.obtainToken({
+        // 1. Exchange the code for the Access Token
+        const { result: tokenResult } = await client.oAuth.obtainToken({
             clientId: process.env.SQUARE_APP_ID,
             clientSecret: process.env.SQUARE_APP_SECRET,
             code,
             grantType: 'authorization_code'
         });
-        
-        // Save to Cosmos DB instead of putting it in the URL
-        await saveTempAuth(state, result.accessToken, "L7SDWNY6TWWVB");
 
-        // Redirect back to app with status ONLY
+        const accessToken = tokenResult.accessToken;
+
+        // 2. FETCH the actual location(s) for THIS seller
+        // We create a new client authorized with the user's fresh token
+        const userClient = new SquareClient({ accessToken });
+        const { result: locationsResult } = await userClient.locations.listLocations();
+        
+        // Grab the first active location found for this seller
+        const firstLocation = locationsResult.locations.find(l => l.status === 'ACTIVE');
+        console.log(locationsResult)
+        if (!firstLocation) {
+            throw new Error("No active locations found for this seller.");
+        }
+
+        const realLocationId = firstLocation.id;
+
+        // 3. Save the REAL location ID to Cosmos DB
+        await saveTempAuth(state, accessToken, realLocationId);
+
         res.redirect(`myapp://auth-callback?status=success&state=${state}`);
     } catch (err) {
-        console.log(err)
+        console.error("Auth Error:", err);
         res.redirect(`myapp://auth-callback?status=error`);
     }
 });
