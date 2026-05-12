@@ -317,19 +317,19 @@ app.get('/square/callback', async (req, res) => {
 
     try {
         // 1. Exchange the code for the Access Token
-        const { result: tokenResult } = await client.oAuth.obtainToken({
+        const result = await client.oAuth.obtainToken({
             clientId: process.env.SQUARE_APP_ID,
             clientSecret: process.env.SQUARE_APP_SECRET,
             code,
             grantType: 'authorization_code'
         });
 
-        const accessToken = tokenResult.accessToken;
+        const accessToken = result.accessToken;
 
         // 2. FETCH the actual location(s) for THIS seller
         // We create a new client authorized with the user's fresh token
         const userClient = new SquareClient({ accessToken });
-        const { result: locationsResult } = await userClient.locations.listLocations();
+        const locationsResult = await userClient.locations.listLocations();
         
         // Grab the first active location found for this seller
         const firstLocation = locationsResult.locations.find(l => l.status === 'ACTIVE');
