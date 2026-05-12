@@ -308,43 +308,47 @@ app.get('/square/customers', requireSquareLogin, async (req, res) => {
 
 
 app.get('/square/callback', async (req, res) => {
-    const client = new SquareClient({});
-    
     const { code, state } = req.query;
 
     try {
-        // 1. Exchange the code for the Access Token
-        const token = await client.oAuth.obtainToken({
+        // 1. Exchange the code for the token (keeping the SDK for this part is fine)
+        const client = new SquareClient({});
+        const response = await client.oAuth.obtainToken({
             clientId: process.env.SQUARE_APP_ID,
             clientSecret: process.env.SQUARE_APP_SECRET,
             code,
             grantType: 'authorization_code'
         });
 
-        const accessToken = token.accessToken;
-        console.log(accessToken)
-// Initialize the client correctly for the newer SDK
-const userClient = new SquareClient({
-    token: accessToken,
-    // Manually set the base URL to force the SDK to bypass the environment lookup
-    environment: SquareEnvironment.Production,
-});
-  console.log('I AM HERE')
-    // UPDATED CALL PATTERN:
-    const result = await userClient.locations.list();
-    const locations = result.locations;
+        const accessToken = response.result.accessToken;
 
-    // This is exactly like the doc snippet you found
-    locations.forEach(function (location) {
-        console.log(`${location.id}: ${location.name}`);
-    });
+        // 2. Manual Fetch Request
+        const locationsResponse = await fetch('https://connect.squareup.com/v2/locations', {
+            method: 'GET',
+            headers: {
+                'Authorization': `Bearer ${accessToken}`,
+                'Square-Version': '2025-01-22', // Best practice: include the version
+                'Content-Type': 'application/json'
+            }
+        });
 
-    const firstLocation = locations.find(l => l.status === 'ACTIVE');
-    const realLocationId = firstLocation.id;
-    // Save your data
-    await saveTempAuth(state, accessToken, realLocationId);
+        const data = await locationsResponse.json();
+
+        if (!locationsResponse.ok) {
+            // This will tell you EXACTLY why Square is unhappy
+            console.error("Square API Error Body:", JSON.stringify(data, null, 2));
+            throw new Error(`Square API responded with ${locationsResponse.status}`);
+        }
+
+        const locations = data.locations;
+        console.log("Locations found:", locations.length);
+
+        // Continue with your logic...
+        const firstLocation = locations.find(l => l.status === 'ACTIVE');
+        await saveTempAuth(state, accessToken, firstLocation.id);
 
         res.redirect(`myapp://auth-callback?status=success&state=${state}`);
+
     } catch (err) {
         console.error("Auth Error:", err);
         res.redirect(`myapp://auth-callback?status=error`);
