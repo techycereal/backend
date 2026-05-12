@@ -327,20 +327,19 @@ app.get('/square/callback', async (req, res) => {
 const userClient = new SquareClient({
     accessToken: accessToken,
     // Manually set the base URL to force the SDK to bypass the environment lookup
-    baseUrl: 'https://connect.squareup.com' 
+    environment: SquareEnvironment.Production,
 });
 
     // UPDATED CALL PATTERN:
-    const results = await userClient.locations.list();
-    console.log(results)
-    const locations = results.locations;
+    const { result } = await userClient.locations.list();
+    const locations = result.locations;
+
+    // This is exactly like the doc snippet you found
+    locations.forEach(function (location) {
+        console.log(`${location.id}: ${location.name}`);
+    });
+
     const firstLocation = locations.find(l => l.status === 'ACTIVE');
-
-    if (!firstLocation) {
-        throw new Error("No active locations found.");
-    }
-
-    const realLocationId = firstLocation.id;
     
     // Save your data
     await saveTempAuth(state, accessToken, realLocationId);
