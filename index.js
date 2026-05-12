@@ -326,13 +326,13 @@ app.get('/square/callback', async (req, res) => {
 // Initialize the client correctly for the newer SDK
 const userClient = new SquareClient({ 
     accessToken,
-    environment: 'production' // or 'sandbox' depending on your env
+    environment: SquareEnvironment.Production
 });
 
     // UPDATED CALL PATTERN:
-    const { result } = await userClient.locations.list();
-    console.log(result)
-    const locations = result.locations;
+    const results = await userClient.locations.list();
+    console.log(results)
+    const locations = results.locations;
     const firstLocation = locations.find(l => l.status === 'ACTIVE');
 
     if (!firstLocation) {
