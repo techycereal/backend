@@ -331,7 +331,7 @@ const userClient = new SquareClient({
 });
   console.log('I AM HERE')
     // UPDATED CALL PATTERN:
-    const { result } = await userClient.locations.list();
+    const result = await userClient.locations.list();
     const locations = result.locations;
 
     // This is exactly like the doc snippet you found
