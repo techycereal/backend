@@ -320,7 +320,7 @@ app.get('/square/callback', async (req, res) => {
             grantType: 'authorization_code'
         });
 
-        const accessToken = response.result.accessToken;
+        const accessToken = response.accessToken;
 
         // 2. Manual Fetch Request
         const locationsResponse = await fetch('https://connect.squareup.com/v2/locations', {
