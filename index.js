@@ -356,7 +356,7 @@ app.post('/api/bootstrap', async (req, res) => {
         });
 
         // 3. Security: Delete it immediately after it's been "claimed"
-        await container.item(state, state).delete();
+        //await container.item(state, state).delete();
 
     } catch (err) {
         console.error("Bootstrap error:", err);
