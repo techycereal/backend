@@ -314,31 +314,35 @@ app.get('/square/callback', async (req, res) => {
 
     try {
         // 1. Exchange the code for the Access Token
-        const result = await client.oAuth.obtainToken({
+        const token = await client.oAuth.obtainToken({
             clientId: process.env.SQUARE_APP_ID,
             clientSecret: process.env.SQUARE_APP_SECRET,
             code,
             grantType: 'authorization_code'
         });
 
-        const accessToken = result.accessToken;
+        const accessToken = token.accessToken;
 
-        // 2. FETCH the actual location(s) for THIS seller
-        // We create a new client authorized with the user's fresh token
-        const userClient = new SquareClient({ accessToken });
-        const locationsResult = await userClient.locations.listLocations();
-        
-        // Grab the first active location found for this seller
-        const firstLocation = locationsResult.locations.find(l => l.status === 'ACTIVE');
-        console.log(locationsResult)
-        if (!firstLocation) {
-            throw new Error("No active locations found for this seller.");
-        }
+// Initialize the client correctly for the newer SDK
+const userClient = new SquareClient({ 
+    accessToken,
+    environment: 'production' // or 'sandbox' depending on your env
+});
 
-        const realLocationId = firstLocation.id;
+    // UPDATED CALL PATTERN:
+    const { result } = await userClient.locations.list();
+    console.log(result)
+    const locations = result.locations;
+    const firstLocation = locations.find(l => l.status === 'ACTIVE');
 
-        // 3. Save the REAL location ID to Cosmos DB
-        await saveTempAuth(state, accessToken, realLocationId);
+    if (!firstLocation) {
+        throw new Error("No active locations found.");
+    }
+
+    const realLocationId = firstLocation.id;
+    
+    // Save your data
+    await saveTempAuth(state, accessToken, realLocationId);
 
         res.redirect(`myapp://auth-callback?status=success&state=${state}`);
     } catch (err) {
