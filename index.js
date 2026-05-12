@@ -329,7 +329,7 @@ const userClient = new SquareClient({
     // Manually set the base URL to force the SDK to bypass the environment lookup
     environment: SquareEnvironment.Production,
 });
-
+  console.log('I AM HERE')
     // UPDATED CALL PATTERN:
     const { result } = await userClient.locations.list();
     const locations = result.locations;
