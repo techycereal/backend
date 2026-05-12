@@ -327,7 +327,7 @@ app.get('/square/callback', async (req, res) => {
             method: 'GET',
             headers: {
                 'Authorization': `Bearer ${accessToken}`,
-                'Square-Version': '2025-01-22', // Best practice: include the version
+                'Square-Version': '2026-01-22', // Best practice: include the version
                 'Content-Type': 'application/json'
             }
         });
