@@ -322,11 +322,12 @@ app.get('/square/callback', async (req, res) => {
         });
 
         const accessToken = token.accessToken;
-
+        console.log(accessToken)
 // Initialize the client correctly for the newer SDK
-const userClient = new SquareClient({ 
-    accessToken,
-    environment: SquareEnvironment.Production
+const userClient = new SquareClient({
+    accessToken: accessToken,
+    // Manually set the base URL to force the SDK to bypass the environment lookup
+    baseUrl: 'https://connect.squareup.com' 
 });
 
     // UPDATED CALL PATTERN:
