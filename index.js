@@ -340,7 +340,7 @@ const userClient = new SquareClient({
     });
 
     const firstLocation = locations.find(l => l.status === 'ACTIVE');
-    
+    const realLocationId = firstLocation.id;
     // Save your data
     await saveTempAuth(state, accessToken, realLocationId);
 
