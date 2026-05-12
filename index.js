@@ -308,10 +308,7 @@ app.get('/square/customers', requireSquareLogin, async (req, res) => {
 
 
 app.get('/square/callback', async (req, res) => {
-    const client = new SquareClient({
-        // Initialize client with the dynamic token we just got
-        accessToken: null 
-    });
+    const client = new SquareClient({});
     
     const { code, state } = req.query;
 
