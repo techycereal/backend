@@ -8,7 +8,7 @@ console.time("azure-blob");
 const { BlobServiceClient } = require('@azure/storage-blob')
 console.timeEnd("azure-blob");
 console.time("database");
-const { sendEmailVerification, sendSecretAuth, getTempAuth, saveTempAuth, addDrinks, getReports, getOffers, addItem, natsPush, getData, updateItem, deleteItem, natsGet, pushOffer, natsPurchases, getPurchases, getName, getDrinks, getUser, finishTutorial, saveCode, createBusinessName } = require('./lib/database')
+const { getCustomizationsLibrary, saveCustomizationsLibrary, sendEmailVerification, sendSecretAuth, getTempAuth, saveTempAuth, addDrinks, getReports, getOffers, addItem, natsPush, getData, updateItem, deleteItem, natsGet, pushOffer, natsPurchases, getPurchases, getName, getDrinks, getUser, finishTutorial, saveCode, createBusinessName } = require('./lib/database')
 const { sendSimpleMessage } = require('./lib/send_email')
 console.timeEnd("database");
 const axios = require('axios')
@@ -414,110 +414,365 @@ app.post('/api/bootstrap', async (req, res) => {
     }
 });
 
-
-
-// POST /add_data with file upload
-app.post('/add_data', verifyToken, cacheUser, upload.single('file'), async (req, res) => {
-    const ItemSchema = z.object({
-  item: z.string().min(1, "Item name is required"),
-  price: z
-    .string()
-    .refine(val => !isNaN(Number(val)) && Number(val) >= 0, {
-      message: "Price must be a non-negative number",
-    }),
-  quantity: z
-    .string()
-    .refine(val => Number.isInteger(Number(val)) && Number(val) >= 0, {
-      message: "Quantity must be a non-negative integer",
-    }),
-  category: z.string().min(1, "Category is required"),
-  description: z.string().max(500, "Description too long"),
-});
+app.get('/get_customizations', verifyToken, cacheUser, async (req, res) => {
   try {
-    // Validate the data
-    const item = req.body
-    // Upload file to Azure Blob Storage
-    if (req.file) {
-      console.log('here')
-      const blobName = Date.now() + '-' + req.file.originalname
-      const blockBlobClient = containerClient.getBlockBlobClient(blobName)
-      await blockBlobClient.upload(req.file.buffer, req.file.size)
-      item.fileUrl = blockBlobClient.url // store Blob URL in Cosmos DB
-      console.log(`📤 File uploaded to Blob Storage: ${item.fileUrl}`)
-    }
-    console.log(item)
-    let validatedItem = ItemSchema.parse(item)
-    if(item.fileUrl) {
-      validatedItem = ({...validatedItem, fileUrl: item.fileUrl})
-    }
-    const resource = await addItem(validatedItem, req.userData)
-    res.status(201).json({ message: 'Successful post', item: resource })
+    // Call the decoupled data accessor function
+    const modifiers = await getCustomizationsLibrary(req.userData);
+    res.status(200).json(modifiers);
   } catch (err) {
-    console.error(err)
-    res.status(500).json({ error: err.message })
+    console.error(`❌ [Server Error] Failed on /get_customizations: ${err.message || err}`);
+    res.status(500).json({ error: "Could not fetch customizations library" });
   }
-})
+});
+
+// ==========================================
+// POST Route: Save/Update Global Customization Library
+// ==========================================
+// Example update inside your Express router file:
+app.post("/save_customizations", verifyToken, cacheUser, async (req, res) => {
+  try {
+    const { modifiers, customizationRules } = req.body;
+    const token = req.user
+
+    const updatedDoc = await saveCustomizationsLibrary(modifiers, customizationRules, token);
+    
+    res.status(200).json({ 
+      size: updatedDoc.modifiers.size,
+      toppings: updatedDoc.modifiers.toppings,
+      extras: updatedDoc.modifiers.extras,
+      free_sides: updatedDoc.modifiers.free_sides,
+      paid_sides: updatedDoc.modifiers.paid_sides
+    });
+  } catch (err) {
+    console.log(err)
+    res.status(500).json({ error: err.message });
+  }
+});
+
+
 
 app.post('/delete_data', verifyToken, cacheUser, async (req, res) => {
   try {
     const DeleteItemSchema = z.object({
-  id: z.string().min(1, "Item ID is required"),
-  fileUrl: z.string().url("Invalid file URL"),
-});
-    const item = DeleteItemSchema.parse(req.body)
-    const token = req.user
-    console.log(item)
-    await deleteBlob(item.fileUrl)
-    await deleteItem(item.id, req.userData)
-    res.status(201).json({ message: 'Successful deletion' })
-  } catch (err) {
-    console.error(err)
-    res.status(500).json({ error: err.message })
-  }
-})
+      id: z.string().min(1, "Item ID is required"),
+      // Fallback to a placeholder string if fileUrl is empty/missing, so it passes Zod
+      fileUrl: z.string().optional().default("")
+    });
 
+    // 1. Safely parse incoming arguments through the schema matrix
+    const item = DeleteItemSchema.parse(req.body);
+    console.log("🗑️ Validated request received for item deletion:", item.id);
 
-app.put('/edit_data', verifyToken, upload.single('file'), async (req, res) => {
-  const ItemSchema = z.object({
-  item: z.string().min(1, "Item name is required"),
-  price: z
-    .string()
-    .refine(val => !isNaN(Number(val)) && Number(val) >= 0, {
-      message: "Price must be a non-negative number",
-    }),
-  quantity: z
-    .string()
-    .refine(val => Number.isInteger(Number(val)) && Number(val) >= 0, {
-      message: "Quantity must be a non-negative integer",
-    }),
-  category: z.string().min(1, "Category is required"),
-  description: z.string().max(500, "Description too long"),
-  fileUrl: z.string().min(1, "File is Required"),
-  id: z.string().min(1, "ID is Required"),
-  type: z.string().min(1, "Type Required"),
-});
-  try {
-    const item = req.body
-  const token = req.user
-    // Upload file to Azure Blob Storage
-    if (req.file) {
-      const blobName = Date.now() + '-' + req.file.originalname
-      const blockBlobClient = containerClient.getBlockBlobClient(blobName)
-      await blockBlobClient.upload(req.file.buffer, req.file.size)
-      item.fileUrl = blockBlobClient.url // store Blob URL in Cosmos DB
-      console.log(`📤 File uploaded to Blob Storage: ${item.fileUrl}`)
+    // 2. Only attempt to erase the cloud blob if a real URL was assigned to the item doc
+    if (item.fileUrl && item.fileUrl.startsWith("http")) {
+      try {
+        await deleteBlob(item.fileUrl);
+      } catch (blobErr) {
+        console.warn(`⚠️ Non-fatal storage alert: Blob erase skipped or not found: ${blobErr.message}`);
+      }
     }
 
-    console.log(item)
-    const parsedItem = ItemSchema.parse({...item, type: 'product'})
-    await updateItem(parsedItem.id, parsedItem, token)
-    res.status(201).json({ message: 'Successful post', item })
-  } catch (err) {
-    console.error(err)
-    res.status(500).json({ error: err.message })
-  }
-})
+    // 3. Execute the database layer removal hook (Passing req.token or matching wrapper context)
+    // Note: Make sure 'token' is available here (likely extracted from verifyToken onto req.token or req.headers)
+    const activeToken = req.user;
+    await deleteItem(item.id, activeToken);
 
+    res.status(200).json({ message: 'Successful deletion' }); // Changed from 201 (Created) to 200 (OK)
+
+  } catch (err) {
+    // =========================================================================
+    // CRITICAL FIX: INTERCEPT ZOD ERRORS TO PREVENT NODE.JS INSPECT CRASH
+    // =========================================================================
+    if (err instanceof z.ZodError) {
+      console.warn("⚠️ Validation constraints failed on /delete_data path:", err.errors);
+      return res.status(400).json({ 
+        error: "Validation constraints failed", 
+        details: err.errors 
+      });
+    }
+
+    // Log generic system operational crashes safely
+    console.error("❌ Exception caught inside /delete_data route layer:", err.message || err);
+    res.status(500).json({ error: err.message || "An unexpected server error occurred." });
+  }
+});
+
+
+app.put('/edit_data', verifyToken, cacheUser, upload.single('file'), async (req, res) => {
+  // 1. Updated validation parameters extending your original Zod framework
+  const ItemSchema = z.object({
+    id: z.string().min(1, "ID is Required"),
+    item: z.string().min(1, "Item name is required"),
+    price: z
+      .string()
+      .refine(val => !isNaN(Number(val)) && Number(val) >= 0, {
+        message: "Price must be a non-negative number",
+      }),
+    quantity: z
+      .string()
+      .refine(val => !isNaN(Number(val)) && Number.isInteger(Number(val)) && Number(val) >= 0, {
+        message: "Quantity must be a non-negative integer",
+      }),
+    category: z.string().min(1, "Category is required"),
+    description: z.string().max(500, "Description too long").optional().default(""),
+    fileUrl: z.string().min(1, "File is Required"),
+    type: z.string().min(1, "Type Required"),
+    
+    linkedModifierIds: z.string().transform((val) => {
+      try { return JSON.parse(val); } catch { return []; }
+    }),
+    allCurrentModifiers: z.string().transform((val) => {
+      try { return JSON.parse(val); } catch { return {}; }
+    }),
+    customizationRules: z.string().transform((val) => {
+      try { return JSON.parse(val); } catch { return null; }
+    }).optional()
+  });
+
+  try {
+    const rawBody = { ...req.body };
+    const activeToken = req.user;
+
+    // 2. Manage the incoming file asset streaming to Azure Blob storage
+    if (req.file) {
+      const blobName = Date.now() + '-' + req.file.originalname;
+      const blockBlobClient = containerClient.getBlockBlobClient(blobName);
+      await blockBlobClient.upload(req.file.buffer, req.file.size);
+      rawBody.fileUrl = blockBlobClient.url;
+      console.log(`📤 Fresh image file uploaded to Blob Storage: ${rawBody.fileUrl}`);
+    }
+
+    // 3. Parse incoming arguments through the transformed Zod blueprint schema
+    const parsedData = ItemSchema.parse({ ...rawBody, type: 'product' });
+
+    const defaultRules = parsedData.customizationRules || {
+      size: { min_selectable: 1, max_selectable: 1 },
+      toppings: { min_selectable: 0, max_selectable: 3 },
+      extras: { min_selectable: 0, max_selectable: 1 },
+      free_sides: { min_selectable: 0, max_selectable: 1 },
+      paid_sides: { min_selectable: 0, max_selectable: 1 },
+    };
+
+    // Reassemble payload object structure seamlessly preserving media attachment pointers
+    const productPayload = {
+      item: parsedData.item,
+      price: Number(parsedData.price),
+      quantity: Number(parsedData.quantity),
+      category: parsedData.category,
+      description: parsedData.description,
+      linkedModifierIds: parsedData.linkedModifierIds, 
+      customizationRules: defaultRules,
+      fileUrl: parsedData.fileUrl,
+      type: parsedData.type
+    };
+
+    // =========================================================================
+    // 4. PERSIST UNIQUE SNAPSHOT SNAPS FOR INLINE MODIFICATIONS
+    // =========================================================================
+    if (parsedData.allCurrentModifiers && Object.keys(parsedData.allCurrentModifiers).length > 0) {
+      try {
+        const cosmosContainer = await initializeCosmosContainer();
+        const businessId = await getUser(req.user)
+        
+        const timestamp = Date.now();
+        const libraryId = `modifiers_lib_${businessId}_${timestamp}`;
+
+        // Deduplicate incoming options to ensure absolute name string uniqueness
+        const cleanModifiers = {};
+        Object.keys(parsedData.allCurrentModifiers).forEach((categoryKey) => {
+          const initialArray = parsedData.allCurrentModifiers[categoryKey] || [];
+          const uniqueMap = new Map();
+          
+          initialArray.forEach((mod) => {
+            if (mod && mod.name) {
+              const uniqueTokenKey = mod.name.trim().toLowerCase();
+              if (!uniqueMap.has(uniqueTokenKey)) {
+                uniqueMap.set(uniqueTokenKey, {
+                  id: mod.id,
+                  name: mod.name.trim(),
+                  price: Number(mod.price) || 0
+                });
+              }
+            }
+          });
+          cleanModifiers[categoryKey] = Array.from(uniqueMap.values());
+        });
+
+        const newLibDoc = {
+          id: libraryId, 
+          type: "modifier_library",
+          business: businessId, 
+          created_at: new Date(timestamp).toISOString(),
+          modifiers: cleanModifiers,
+          customizationRules: defaultRules
+        };
+
+        await cosmosContainer.items.create(newLibDoc, { partitionKey: businessId });
+        console.log(`🎯 Unique historic modifier snapshot saved on edit session. ID: ${libraryId}`);
+      } catch (modSaveErr) {
+        console.error("Non-fatal alert: Modifier database index stream failure: ", modSaveErr);
+      }
+    }
+
+    // 5. Fire your updated database item updater block
+    const resource = await updateItem(parsedData.id, productPayload, activeToken);
+    
+    res.status(200).json({ 
+      message: 'Successful item update adjustment', 
+      item: resource 
+    });
+
+  } catch (err) {
+    console.error(`❌ [Server Error] Route failed on /edit_data: ${err.message || err}`);
+    
+    if (err instanceof z.ZodError) {
+      return res.status(400).json({ 
+        error: "Validation constraints failed", 
+        details: err.errors 
+      });
+    }
+    
+    res.status(500).json({ error: err.message || "An unexpected server error occurred" });
+  }
+});
+
+app.post('/add_data', verifyToken, cacheUser, upload.single('file'), async (req, res) => {
+  // 1. Updated validation parameters extending your original Zod framework
+  const ItemSchema = z.object({
+    item: z.string().min(1, "Item name is required"),
+    price: z
+      .string()
+      .refine(val => !isNaN(Number(val)) && Number(val) >= 0, {
+        message: "Price must be a non-negative number",
+      }),
+    quantity: z
+      .string()
+      .optional()
+      .default("")
+      .refine(val => val === "" || (!isNaN(Number(val)) && Number.isInteger(Number(val)) && Number(val) >= 0), {
+        message: "Quantity must be a non-negative integer",
+      }),
+    category: z.string().min(1, "Category is required"),
+    description: z.string().max(500, "Description too long").optional().default(""),
+    
+    linkedModifierIds: z.string().transform((val) => {
+      try { return JSON.parse(val); } catch { return []; }
+    }),
+    allCurrentModifiers: z.string().transform((val) => {
+      try { return JSON.parse(val); } catch { return {}; }
+    }),
+    // NEW ZOD PARAMETER: INTERCEPT AND TRANSFORM STRUNG BOUNDARY CONFIGS
+    customizationRules: z.string().transform((val) => {
+      try { return JSON.parse(val); } catch { return null; }
+    }).optional()
+  });
+
+  try {
+    const rawBody = { ...req.body };
+
+    // 2. Manage the incoming file asset streaming to Azure Blob storage
+    if (req.file) {
+      const blobName = Date.now() + '-' + req.file.originalname;
+      const blockBlobClient = containerClient.getBlockBlobClient(blobName);
+      await blockBlobClient.upload(req.file.buffer, req.file.size);
+      rawBody.fileUrl = blockBlobClient.url;
+      console.log(`📤 File uploaded to Blob Storage: ${rawBody.fileUrl}`);
+    }
+
+    // 3. Parse incoming arguments through the transformed Zod blueprint schema
+    const parsedData = ItemSchema.parse(rawBody);
+
+    const defaultRules = parsedData.customizationRules || {
+      size: { min_selectable: 1, max_selectable: 1 },
+      toppings: { min_selectable: 0, max_selectable: 3 },
+      extras: { min_selectable: 0, max_selectable: 1 },
+      free_sides: { min_selectable: 0, max_selectable: 1 },
+      paid_sides: { min_selectable: 0, max_selectable: 1 },
+    };
+
+    // Reassemble payload object structure seamlessly preserving media attachment pointers
+    const productPayload = {
+      item: parsedData.item,
+      price: Number(parsedData.price),
+      quantity: Number(parsedData.quantity),
+      category: parsedData.category,
+      description: parsedData.description,
+      linkedModifierIds: parsedData.linkedModifierIds, 
+      customizationRules: defaultRules,
+      fileUrl: rawBody.fileUrl || req.body.fileUrl || ""
+    };
+
+    // =========================================================================
+    // 4. FIXED: PERSIST UNIQUE INDEPENDENT MODIFIERS & CUSTOMIZATION RULES 
+    // =========================================================================
+    if (parsedData.allCurrentModifiers && Object.keys(parsedData.allCurrentModifiers).length > 0) {
+      try {
+        const cosmosContainer = await initializeCosmosContainer();
+        const businessId = req.userData.business;
+        
+        // Match the timestamp strategy from your save helper function
+        const timestamp = Date.now();
+        const libraryId = `modifiers_lib_${businessId}_${timestamp}`;
+
+        // Deduplicate incoming options to ensure absolute name string uniqueness
+        const cleanModifiers = {};
+        Object.keys(parsedData.allCurrentModifiers).forEach((categoryKey) => {
+          const initialArray = parsedData.allCurrentModifiers[categoryKey] || [];
+          const uniqueMap = new Map();
+          
+          initialArray.forEach((mod) => {
+            if (mod && mod.name) {
+              const uniqueTokenKey = mod.name.trim().toLowerCase();
+              if (!uniqueMap.has(uniqueTokenKey)) {
+                uniqueMap.set(uniqueTokenKey, {
+                  id: mod.id,
+                  name: mod.name.trim(),
+                  price: Number(mod.price) || 0
+                });
+              }
+            }
+          });
+          cleanModifiers[categoryKey] = Array.from(uniqueMap.values());
+        });
+
+        const newLibDoc = {
+          id: libraryId, 
+          type: "modifier_library",
+          business: businessId, 
+          created_at: new Date(timestamp).toISOString(),
+          modifiers: cleanModifiers,
+          customizationRules: defaultRules
+        };
+
+        // Create the unique fresh history snapshot directly inside your container partition
+        await cosmosContainer.items.create(newLibDoc, { partitionKey: businessId });
+        console.log(`🎯 Unique historic modifier snapshot saved. ID: ${libraryId}`);
+      } catch (modSaveErr) {
+        console.error("Non-fatal alert: Modifier database index stream failure: ", modSaveErr);
+      }
+    }
+
+    // 5. Fire your standard baseline creation wrapper to drop product item details inside Cosmos
+    const resource = await addItem(productPayload, req.user);
+    
+    res.status(201).json({ 
+      message: 'Successful post', 
+      item: resource 
+    });
+
+  } catch (err) {
+    console.error(`❌ [Server Error] Route failed on /add_data: ${err.message || err}`);
+    
+    if (err instanceof z.ZodError) {
+      return res.status(400).json({ 
+        error: "Validation constraints failed", 
+        details: err.errors 
+      });
+    }
+    
+    res.status(500).json({ error: err.message || "An unexpected server crash occurred" });
+  }
+});
 
 app.get('/get_data', verifyToken, async (req, res) => {
     try{
