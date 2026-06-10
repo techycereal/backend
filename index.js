@@ -515,7 +515,6 @@ app.put('/edit_data', verifyToken, cacheUser, upload.single('file'), async (req,
       }),
     category: z.string().min(1, "Category is required"),
     description: z.string().max(500, "Description too long").optional().default(""),
-    fileUrl: z.string().min(1, "File is Required"),
     type: z.string().min(1, "Type Required"),
     
     linkedModifierIds: z.string().transform((val) => {
